@@ -76,6 +76,7 @@ nav button:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
 .seg button[aria-pressed="true"]{background:var(--acc);border-color:var(--acc);color:var(--accInk)}
 .seg button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .chips{display:flex;gap:6px;overflow-x:auto;padding:9px 16px;scrollbar-width:none}
+.chips.inline{padding:0 0 2px;margin:-2px 0 -4px}
 .chips::-webkit-scrollbar{display:none}
 .chip{flex:0 0 auto;appearance:none;cursor:pointer;font:inherit;font-size:13px;font-weight:600;
   padding:6px 12px;border-radius:999px;border:1px solid var(--line2);background:var(--surface);
@@ -200,6 +201,13 @@ main{flex:1 1 auto;padding:14px 16px 8px}
   font-family:"IBM Plex Mono",ui-monospace,monospace}
 .seltog[aria-pressed="true"]{color:var(--acc);background:var(--accSoft)}
 .seltog:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+.bulk{display:flex;gap:8px;flex-wrap:wrap;margin:-2px 0 2px}
+.bulkbtn{appearance:none;cursor:pointer;font:inherit;font-size:13px;font-weight:600;
+  padding:7px 13px;border-radius:999px;border:1px solid var(--line2);
+  background:var(--surface);color:var(--acc)}
+.bulkbtn[disabled]{color:var(--ink3);cursor:default;background:var(--surface2)}
+.bulkbtn.rm{color:var(--again)}
+.bulkbtn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .starrow{padding:0 18px 14px;display:flex;gap:8px;flex-wrap:wrap}
 .star{appearance:none;cursor:pointer;font:inherit;font-size:13.5px;font-weight:600;
   padding:7px 13px;border-radius:999px;border:1px solid var(--line2);
@@ -268,7 +276,7 @@ var XLBL={Richtung:['Abkürzung','Beispiel'],Bewegung:['Gegenbewegung','Beispiel
 
 /* ---------- storage ---------- */
 var KEY='muskeltrainer.v2';
-var S={box:{},err:{},sel:{},right:0,wrong:0,region:'Alle',bcat:'Alle',deck:'muskeln',
+var S={box:{},err:{},sel:{},right:0,wrong:0,region:'Alle',bcat:'Alle',deck:'muskeln',qscope:'mix',qtype:'alles',
        goal:20,day:'',today:0,streak:0,lastDone:''};
 try{var raw=localStorage.getItem(KEY); if(raw) S=Object.assign(S,JSON.parse(raw));}catch(e){}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
@@ -310,7 +318,7 @@ function pick(a){return a[Math.floor(Math.random()*a.length)];}
 /* ---------- state ---------- */
 var tab='karten', deck=S.deck||'muskeln';
 var queue=[], cur=null, flipped=false;
-var qmode='mix', q=null, answered=false;
+var qscope=S.qscope||'mix', qtype=S.qtype||'alles', q=null, answered=false;
 var exam=null;
 var wpath=[];     /* Wissen: breadcrumb stack */
 var wquery='';
@@ -489,58 +497,77 @@ function mkBtn2(l,s,c,f){
 function emptyBox(t,s){var d=el('div','empty'); d.appendChild(el('div','big',t)); d.appendChild(el('div',null,s)); return d;}
 
 /* ---------- Quiz ---------- */
-var QM=[['mix','Gemischt'],['muskel','Muskeln'],['erraten','Erraten'],['funktion','Funktion'],['begriff','Begriffe'],['auswahl','Auswahl'],['fehler','Fehler']];
+var QSCOPE=[['muskeln','Muskeln'],['begriffe','Begriffe'],['mix','Gemischt']];
+var QTYPE=[['alles','Alle Fragearten'],['steckbrief','Steckbrief'],['erraten','Erraten'],['funktion','Funktion']];
+function anteil(c,r){ return (c.rows.length>1&&r&&r[0])?' ('+esc(r[0])+')':''; }
+function row0(c){ return c.rows.length?c.rows[0]:null; }
 var MT=[
- {id:'inn',l:'Innervation',a:function(c){return 'Welcher Nerv versorgt den <em>'+esc(c.lat)+'</em>?';},v:function(c){return c.kv['Innervation'];},max:70},
- {id:'seg',l:'Segment',a:function(c){return 'Aus welcher Rückenmarkshöhe stammt der <em>'+esc(c.lat)+'</em>?';},v:function(c){return c.kv['Segment (Rückenmarkshöhe)'];},max:60},
- {id:'de',l:'Übersetzung',a:function(c){return 'Wie heißt der <em>'+esc(c.lat)+'</em> auf Deutsch?';},v:function(c){return c.de;},max:60},
- {id:'lat',l:'Fachbegriff',a:function(c){return 'Wie lautet der lateinische Name für den <em>'+esc(c.de)+'</em>?';},v:function(c){return c.lat;},req:function(c){return c.de;},max:60},
- {id:'urs',l:'Ursprung',a:function(c){return 'Wo entspringt der <em>'+esc(c.lat)+'</em>'+anteil(c)+'?';},v:function(c){return c.rows.length?c.rows[0][1]:'';},max:90},
- {id:'ans',l:'Ansatz',a:function(c){return 'Wo setzt der <em>'+esc(c.lat)+'</em>'+anteil(c)+' an?';},v:function(c){return c.rows.length?c.rows[0][2]:'';},max:90},
- {id:'fun',l:'Funktion',a:function(c){return 'Was leistet der <em>'+esc(c.lat)+'</em>'+anteil(c)+'?';},v:function(c){return c.rows.length?c.rows[0][3]:'';},max:110},
- {id:'reg',l:'Körperabschnitt',a:function(c){return 'Zu welchem Körperabschnitt zählt der <em>'+esc(c.lat)+'</em>?';},v:function(c){return c.part;},from:function(){return REGIONS.slice();},max:60}
+ {id:'inn',l:'Innervation',a:function(c,r){return 'Welcher Nerv versorgt den <em>'+esc(c.lat)+'</em>?';},
+  v:function(c,r){return c.kv['Innervation'];},max:70},
+ {id:'seg',l:'Segment',a:function(c,r){return 'Aus welcher Rückenmarkshöhe stammt der <em>'+esc(c.lat)+'</em>?';},
+  v:function(c,r){return c.kv['Segment (Rückenmarkshöhe)'];},max:60},
+ {id:'de',l:'Übersetzung',a:function(c,r){return 'Wie heißt der <em>'+esc(c.lat)+'</em> auf Deutsch?';},
+  v:function(c,r){return c.de;},max:60},
+ {id:'lat',l:'Fachbegriff',a:function(c,r){return 'Wie lautet der lateinische Name für den <em>'+esc(c.de)+'</em>?';},
+  v:function(c,r){return c.lat;},req:function(c){return c.de;},max:60},
+ {id:'urs',l:'Ursprung',a:function(c,r){return 'Wo entspringt der <em>'+esc(c.lat)+'</em>'+anteil(c,r)+'?';},
+  v:function(c,r){return r?r[1]:'';},max:90},
+ {id:'ans',l:'Ansatz',a:function(c,r){return 'Wo setzt der <em>'+esc(c.lat)+'</em>'+anteil(c,r)+' an?';},
+  v:function(c,r){return r?r[2]:'';},max:90},
+ {id:'fun',l:'Funktion',a:function(c,r){return 'Was leistet der <em>'+esc(c.lat)+'</em>'+anteil(c,r)+'?';},
+  v:function(c,r){return r?r[3]:'';},max:110},
+ {id:'reg',l:'Körperabschnitt',a:function(c,r){return 'Zu welchem Körperabschnitt zählt der <em>'+esc(c.lat)+'</em>?';},
+  v:function(c,r){return c.part;},from:function(){return REGIONS.slice();},max:60}
 ];
-function anteil(c){ return (c.rows.length>1&&c.rows[0][0])?' ('+esc(c.rows[0][0])+')':''; }
 var ET=[
- {id:'eurs',l:'Vom Ursprung zum Muskel',p:function(c){return c.rows.length?c.rows[0][1]:'';},
-  a:function(t){return 'Welcher Muskel entspringt an: <em>'+esc(trim(t,110))+'</em>?';}},
- {id:'eans',l:'Vom Ansatz zum Muskel',p:function(c){return c.rows.length?c.rows[0][2]:'';},
-  a:function(t){return 'Welcher Muskel setzt hier an: <em>'+esc(trim(t,110))+'</em>?';}},
- {id:'einn',l:'Vom Nerv zum Muskel',p:function(c){return c.kv['Innervation'];},
-  a:function(t){return 'Welcher Muskel wird versorgt von: <em>'+esc(trim(t,90))+'</em>?';}},
- {id:'efun',l:'Von der Funktion zum Muskel',p:function(c){return c.rows.length?c.rows[0][3]:'';},
-  a:function(t){return 'Welcher Muskel leistet: <em>'+esc(trim(t,120))+'</em>?';}}
+ {id:'eurs',l:'Vom Ursprung zum Muskel',p:function(c,r){return r?r[1]:'';},
+  a:function(t,c,r){return 'Welcher Muskel entspringt an: <em>'+esc(trim(t,110))+'</em>?';}},
+ {id:'eans',l:'Vom Ansatz zum Muskel',p:function(c,r){return r?r[2]:'';},
+  a:function(t,c,r){return 'Welcher Muskel setzt hier an: <em>'+esc(trim(t,110))+'</em>?';}},
+ {id:'einn',l:'Vom Nerv zum Muskel',p:function(c,r){return c.kv['Innervation'];},
+  a:function(t,c,r){return 'Welcher Muskel wird versorgt von: <em>'+esc(trim(t,90))+'</em>?';}},
+ {id:'efun',l:'Von der Funktion zum Muskel',p:function(c,r){return r?r[3]:'';},
+  a:function(t,c,r){return 'Welcher Muskel leistet: <em>'+esc(trim(t,120))+'</em>?';}}
 ];
 function qMuskel(){
-  var p=mpoolAll(); if(p.length<4) return null;
-  for(var n=0;n<40;n++){
-    var t=pick(MT), c=pick(p), right=t.v(c);
+  var p=mpoolAll(); if(!p.length) return null;
+  for(var n=0;n<50;n++){
+    var t=pick(MT), c=pick(p), r=c.rows.length?pick(c.rows):null;
+    var right=t.v(c,r);
     if(!right) continue;
     if(t.req&&!t.req(c)) continue;
     var src=t.from?t.from():shuffle(CARDS.filter(function(x){return x.part===c.part&&x!==c;}))
-      .concat(shuffle(CARDS.slice())).map(t.v);
+      .concat(shuffle(CARDS.slice()))
+      .map(function(x){ return t.v(x,row0(x)); });
     var o=distinct(src,right,3); if(!o) continue;
-    return {l:t.l,a:t.a(c),right:right,opts:shuffle(o.concat([right])),max:t.max,card:c};
+    return {l:t.l,a:t.a(c,r),right:right,opts:shuffle(o.concat([right])),max:t.max,card:c};
   }
   return null;
 }
 function qErraten(){
-  var p=mpoolAll(); if(p.length<4) return null;
-  for(var n=0;n<40;n++){
-    var t=pick(ET), c=pick(p), txt=t.p(c);
+  var p=mpoolAll(); if(!p.length) return null;
+  for(var n=0;n<50;n++){
+    var t=pick(ET), c=pick(p), r=c.rows.length?pick(c.rows):null;
+    var txt=t.p(c,r);
     if(!txt) continue;
     var others=shuffle(CARDS.filter(function(x){return x.part===c.part&&x!==c;}))
       .concat(shuffle(CARDS.filter(function(x){return x!==c;}))).map(function(x){return x.lat;});
     var o=distinct(others,c.lat,3); if(!o) continue;
-    return {l:t.l,a:t.a(txt),right:c.lat,opts:shuffle(o.concat([c.lat])),max:70,card:c};
+    return {l:t.l,a:t.a(txt,c,r),right:c.lat,opts:shuffle(o.concat([c.lat])),max:70,card:c};
   }
   return null;
 }
 function qFunktion(){
-  for(var n=0;n<40;n++){
-    var g=pick(D.funk); if(!g.m.length) continue;
+  var pool=mpoolAll(); if(!pool.length) return null;
+  var ids={}; pool.forEach(function(c){ ids[c.i]=1; });
+  var gs=D.funk.filter(function(g){ return g.m.some(function(x){return ids[x.i];}); });
+  if(!gs.length) return null;
+  for(var n=0;n<50;n++){
+    var g=pick(gs);
+    var inPool=g.m.filter(function(x){return ids[x.i];});
+    if(!inPool.length) continue;
     if(Math.random()<0.5){
-      var m=pick(g.m), c=CARDS[m.i];
+      var c=CARDS[pick(inPool).i];
       var inG={}; g.m.forEach(function(x){inG[x.i]=1;});
       var others=shuffle(CARDS.filter(function(x){return !inG[x.i]&&x.part===c.part;}))
         .concat(shuffle(CARDS.filter(function(x){return !inG[x.i];})))
@@ -549,14 +576,14 @@ function qFunktion(){
       return {l:'Funktionsgruppe',a:'Welcher Muskel leistet <em>'+esc(g.b)+'</em> im Bereich <em>'+esc(g.g)+'</em>?',
               right:c.lat,opts:shuffle(o.concat([c.lat])),max:70,card:c,grp:g};
     }else{
-      var c2=CARDS[pick(g.m).i];
+      var c2=CARDS[pick(inPool).i];
       var bad={};
       D.funk.forEach(function(x){
         if(x.g===g.g && x.m.some(function(y){return y.i===c2.i;})) bad[x.b]=1;
       });
       var others2=D.funk.filter(function(x){return x.g===g.g;}).map(function(x){return x.b;})
         .concat(shuffle(D.funk.slice()).map(function(x){return x.b;}))
-        .filter(function(b){return !bad[b];});
+        .filter(function(bb){return !bad[bb];});
       var o2=distinct(others2,g.b,3); if(!o2) continue;
       return {l:'Funktion',a:'Welche Bewegung im Bereich <em>'+esc(g.g)+'</em> leistet der <em>'+esc(c2.lat)+'</em>?',
               right:g.b,opts:shuffle(o2.concat([g.b])),max:70,card:c2,grp:g};
@@ -565,8 +592,8 @@ function qFunktion(){
   return null;
 }
 function qBegriff(){
-  var p=bpoolAll(); if(p.length<4) return null;
-  for(var n=0;n<40;n++){
+  var p=bpoolAll(); if(!p.length) return null;
+  for(var n=0;n<50;n++){
     var b=pick(p);
     if(!b.v) continue;
     var sameCat=shuffle(BEG.filter(function(x){return x.cat===b.cat&&x!==b;}));
@@ -580,42 +607,15 @@ function qBegriff(){
   }
   return null;
 }
-function qFrom(mk,bk){
-  if(!mk.length&&!bk.length) return null;
-  for(var n=0;n<30;n++){
-    var useM = mk.length && (!bk.length || Math.random()<mk.length/(mk.length+bk.length));
-    var r = useM? qMuskelOn(pick(mk)) : qBegriffOn(pick(bk));
-    if(r) return r;
-  }
-  return null;
-}
-function qFehler(){
-  return qFrom(CARDS.filter(function(c){return S.err['m'+c.i];}),
-               BEG.filter(function(b){return S.err['b'+b.i];}));
-}
-function qAuswahl(){ return qFrom(selMuscles(),selBegriffe()); }
-function qMuskelOn(c){
-  for(var n=0;n<20;n++){
-    var t=pick(MT), right=t.v(c);
-    if(!right||(t.req&&!t.req(c))) continue;
-    var src=t.from?t.from():shuffle(CARDS.filter(function(x){return x!==c;})).map(t.v);
-    var o=distinct(src,right,3); if(!o) continue;
-    return {l:t.l,a:t.a(c),right:right,opts:shuffle(o.concat([right])),max:t.max,card:c};
-  }
-  return null;
-}
-function qBegriffOn(b){
-  var o=distinct(shuffle(BEG.filter(function(x){return x.cat===b.cat&&x!==b;})).map(function(x){return x.v;}),b.v,3);
-  if(!o) return null;
-  return {l:b.cat,a:'Was bedeutet <em>'+esc(b.k)+'</em>?',right:b.v,opts:shuffle(o.concat([b.v])),max:90,beg:b};
-}
 function mpoolAll(){
-  if(S.region==='Auswahl'&&selCount('m')) return selMuscles();
-  return S.region==='Alle'||S.region==='Fehler'?CARDS:CARDS.filter(function(c){return c.part===S.region;});
+  if(S.region==='Fehler') return CARDS.filter(function(c){return S.err['m'+c.i];});
+  if(S.region==='Auswahl') return selMuscles();
+  return S.region==='Alle'?CARDS:CARDS.filter(function(c){return c.part===S.region;});
 }
 function bpoolAll(){
-  if(S.bcat==='Auswahl'&&selCount('b')) return selBegriffe();
-  return S.bcat==='Alle'||S.bcat==='Fehler'?BEG:BEG.filter(function(b){return b.cat===S.bcat;});
+  if(S.bcat==='Fehler') return BEG.filter(function(b){return S.err['b'+b.i];});
+  if(S.bcat==='Auswahl') return selBegriffe();
+  return S.bcat==='Alle'?BEG:BEG.filter(function(b){return b.cat===S.bcat;});
 }
 function distinct(src,right,n){
   var seen={},out=[]; seen[norm(right)]=1;
@@ -626,28 +626,51 @@ function distinct(src,right,n){
   }
   return out.length===n?out:null;
 }
-function newQuestion(){
-  var f={mix:null,muskel:qMuskel,erraten:qErraten,funktion:qFunktion,begriff:qBegriff,fehler:qFehler,auswahl:qAuswahl}[qmode];
-  if(qmode==='mix'){
-    var fns=[qMuskel,qMuskel,qErraten,qFunktion,qBegriff];
-    for(var i=0;i<12;i++){ var r=pick(fns)(); if(r){ q=r; answered=false; return; } }
-    q=null; return;
+function qFns(){
+  var fns=[];
+  if(qscope!=='begriffe'){
+    if(qtype==='steckbrief') fns=[qMuskel];
+    else if(qtype==='erraten') fns=[qErraten];
+    else if(qtype==='funktion') fns=[qFunktion];
+    else fns=[qMuskel,qMuskel,qErraten,qFunktion];
   }
-  for(var j=0;j<12;j++){ var r2=f(); if(r2){ q=r2; answered=false; return; } }
+  if(qscope==='begriffe') fns=[qBegriff];
+  else if(qscope==='mix') fns=fns.concat([qBegriff,qBegriff]);
+  return fns;
+}
+function newQuestion(){
+  var fns=qFns();
+  for(var i=0;i<20;i++){ var r=pick(fns)(); if(r){ q=r; answered=false; return; } }
+  for(var j=0;j<fns.length;j++){ var r2=fns[j](); if(r2){ q=r2; answered=false; return; } }
   q=null;
 }
 function renderSubQuiz(){
   var s=$('#subbar'); s.textContent='';
+  var seg=el('div','seg');
+  QSCOPE.forEach(function(d){
+    var b=el('button',null,d[1]); b.type='button';
+    b.setAttribute('aria-pressed',String(qscope===d[0]));
+    b.onclick=function(){ qscope=d[0]; S.qscope=d[0]; save(); exam=null; q=null; render(); };
+    seg.appendChild(b);
+  });
+  s.appendChild(seg);
+  var key = qscope==='begriffe' ? 'bcat' : 'region';
+  var opts = qscope==='begriffe' ? ['Alle'].concat(BCATS) : ['Alle'].concat(REGIONS);
+  var pr = qscope==='begriffe' ? 'b' : 'm';
+  if(selCount(pr)) opts.splice(1,0,'Auswahl');
+  if(errCount()) opts.push('Fehler');
   var c=el('div','chips');
-  QM.forEach(function(m){
-    if(m[0]==='fehler'&&!errCount()) return;
-    if(m[0]==='auswahl'&&!selCount()) return;
+  opts.forEach(function(r){
     var b=el('button','chip'); b.type='button';
-    b.appendChild(document.createTextNode(m[1]));
-    if(m[0]==='fehler') b.appendChild(el('span','n',String(errCount())));
-    if(m[0]==='auswahl') b.appendChild(el('span','n',String(selCount())));
-    b.setAttribute('aria-pressed',String(qmode===m[0]));
-    b.onclick=function(){ qmode=m[0]; exam=null; q=null; render(); };
+    b.appendChild(document.createTextNode(r==='Fehler'?'Fehlerkiste':(r==='Auswahl'?'Meine Auswahl':r)));
+    if(r==='Fehler') b.appendChild(el('span','n',String(errCount())));
+    if(r==='Auswahl') b.appendChild(el('span','n',String(selCount(pr))));
+    b.setAttribute('aria-pressed',String(S[key]===r));
+    b.onclick=function(){
+      S[key]=r;
+      if(qscope==='mix'){ if(key==='region'&&(r==='Alle')) S.bcat='Alle'; }
+      save(); exam=null; q=null; render();
+    };
     c.appendChild(b);
   });
   s.appendChild(c);
@@ -658,8 +681,18 @@ function renderQuiz(){
   main.textContent=''; bar.textContent='';
   var pane=el('div','pane'); main.appendChild(pane);
   if(exam){ renderExam(pane,bar,main); return; }
+  if(qscope!=='begriffe'){
+    var tr=el('div','chips inline');
+    QTYPE.forEach(function(t){
+      var b=el('button','chip'); b.type='button'; b.textContent=t[1];
+      b.setAttribute('aria-pressed',String(qtype===t[0]));
+      b.onclick=function(){ qtype=t[0]; S.qtype=t[0]; save(); q=null; render(); };
+      tr.appendChild(b);
+    });
+    pane.appendChild(tr);
+  }
   if(!q) newQuestion();
-  if(!q){ pane.appendChild(emptyBox('Keine Frage möglich.','Wähle oben einen anderen Bereich.')); return; }
+  if(!q){ pane.appendChild(emptyBox('Keine Frage möglich.','Wähle oben einen anderen Bereich oder eine andere Frageart.')); return; }
 
   var card=el('div','card'), h=el('div','qhead');
   h.appendChild(el('div','qtype',q.l));
@@ -837,22 +870,29 @@ function renderWissen(){
   main.textContent=''; bar.textContent='';
   var pane=el('div','pane'); main.appendChild(pane);
 
+  var inp=el('input','search'); inp.type='search'; inp.id='q-search';
+  inp.placeholder='Suchen: Muskel, Knochenpunkt, Gelenk, Begriff …'; inp.value=wquery;
+  inp.oninput=function(){
+    wquery=inp.value;
+    if(wquery.trim().length>=2 && wpath.length){ wpath=[]; render(); $('#q-search').focus(); return; }
+    renderResults(res); if(deep) deep.hidden = !!wquery.trim();
+  };
+  pane.appendChild(inp);
+  var res=el('div'); pane.appendChild(res);
+  renderResults(res);
+  var deep=null;
   if(wpath.length){
+    deep=el('div','pane');
     var cr=el('div','crumb');
     var back=el('button',null,'‹ Zurück'); back.type='button';
     back.onclick=function(){ wpath.pop(); render(); };
     cr.appendChild(back);
-    pane.appendChild(cr);
-    var it=wpath[wpath.length-1];
-    pane.appendChild(detailOf(it));
+    deep.appendChild(cr);
+    deep.appendChild(detailOf(wpath[wpath.length-1]));
+    deep.hidden = !!wquery.trim();
+    pane.appendChild(deep);
     return;
   }
-  var inp=el('input','search'); inp.type='search'; inp.id='q-search';
-  inp.placeholder='Muskel, Knochenpunkt, Begriff suchen'; inp.value=wquery;
-  inp.oninput=function(){ wquery=inp.value; renderResults(res); };
-  pane.appendChild(inp);
-  var res=el('div'); pane.appendChild(res);
-  renderResults(res);
   if(!wquery.trim()){
     pane.appendChild(el('h3','sec','Nachschlagen'));
     var l=el('div','list');
@@ -938,16 +978,29 @@ function detailOf(it){
   if(it.k==='area') return areaList(o);
   return el('div');
 }
+function bulkRow(keys){
+  var w=el('div','bulk');
+  var have=keys.filter(selOn).length;
+  var add=el('button','bulkbtn'); add.type='button';
+  add.textContent = have===keys.length ? ('alle '+keys.length+' ausgewählt') : ('+  alle '+keys.length+' auswählen');
+  add.disabled = have===keys.length;
+  add.onclick=function(){ selAdd(keys); render(); };
+  w.appendChild(add);
+  if(have){
+    var rm=el('button','bulkbtn rm'); rm.type='button';
+    rm.textContent='−  Auswahl aufheben ('+have+')';
+    rm.onclick=function(){ keys.forEach(function(k){ delete S.sel[k]; }); save(); render(); };
+    w.appendChild(rm);
+  }
+  return w;
+}
 function areaList(a){
   var wrap=el('div','pane');
   if(a.id==='mu'){
     REGIONS.forEach(function(r){
       var cs=CARDS.filter(function(c){return c.part===r;});
       wrap.appendChild(el('h3','sec',r+' — '+cs.length));
-      var bulk=el('button','btn ghost','Alle '+cs.length+' zur Auswahl hinzufügen');
-      bulk.type='button'; bulk.style.minHeight='40px'; bulk.style.fontSize='13.5px';
-      bulk.onclick=function(){ selAdd(cs.map(function(c){return 'm'+c.i;})); render(); };
-      wrap.appendChild(bulk);
+      wrap.appendChild(bulkRow(cs.map(function(c){return 'm'+c.i;})));
       var ll=el('div','list');
       cs.forEach(function(c){ ll.appendChild(listRow({t:c.lat,s:c.de,k:'m',o:c})); });
       wrap.appendChild(ll);
@@ -958,10 +1011,7 @@ function areaList(a){
     BCATS.forEach(function(cat){
       var bs=BEG.filter(function(b){return b.cat===cat;});
       wrap.appendChild(el('h3','sec',cat+' — '+bs.length));
-      var bulk=el('button','btn ghost','Alle '+bs.length+' zur Auswahl hinzufügen');
-      bulk.type='button'; bulk.style.minHeight='40px'; bulk.style.fontSize='13.5px';
-      bulk.onclick=function(){ selAdd(bs.map(function(b){return 'b'+b.i;})); render(); };
-      wrap.appendChild(bulk);
+      wrap.appendChild(bulkRow(bs.map(function(b){return 'b'+b.i;})));
       var ll=el('div','list');
       bs.forEach(function(b){ ll.appendChild(listRow({t:b.k,s:trim(b.v,70),k:'b',o:b})); });
       wrap.appendChild(ll);
@@ -1024,7 +1074,7 @@ function renderStand(){
     var bs=el('button','li'); bs.type='button';
     bs.appendChild(el('div','t','Meine Auswahl: '+selCount('m')+' Muskeln, '+selCount('b')+' Begriffe'));
     bs.appendChild(el('div','s','Als Kartenfilter und als Quizmodus verfügbar'));
-    bs.onclick=function(){ tab='quiz'; qmode='auswahl'; q=null; setTab(); render(); };
+    bs.onclick=function(){ tab='quiz'; qscope='mix'; S.region='Auswahl'; S.bcat='Auswahl'; save(); q=null; setTab(); render(); };
     ls.appendChild(bs);
     var bc=el('button','li'); bc.type='button';
     bc.appendChild(el('div','t','Auswahl leeren'));
@@ -1039,7 +1089,7 @@ function renderStand(){
     var b=el('button','li'); b.type='button';
     b.appendChild(el('div','t','Fehlerkiste: '+errCount()+' Karten'));
     b.appendChild(el('div','s','Gezielt wiederholen — auch als Quizmodus'));
-    b.onclick=function(){ tab='quiz'; qmode='fehler'; q=null; setTab(); render(); };
+    b.onclick=function(){ tab='quiz'; qscope='mix'; S.region='Fehler'; S.bcat='Fehler'; save(); q=null; setTab(); render(); };
     l.appendChild(b); pane.appendChild(l);
   }
   pane.appendChild(el('div','note','Eine Karte steigt eine Stufe, wenn du sie kannst, und fällt bei „Nochmal" oder einer falschen Quizantwort auf Stufe 1 zurück und landet in der Fehlerkiste. Ab Stufe 4 gilt sie als gelernt. Der Stand liegt nur auf diesem Gerät.'));
